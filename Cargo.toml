@@ -1,0 +1,37 @@
+[package]
+name = "forensic-vfs-mount"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Generic FileSystem -> u64-inode / whole-file mount adapter: wraps any forensic-vfs Arc<dyn FileSystem> in the stable-inode, whole-file read surface a FUSE/Dokan handler wants"
+license = "Apache-2.0"
+repository = "https://github.com/SecurityRonin/forensic-vfs-mount"
+authors = ["Albert Hui"]
+keywords = ["forensics", "vfs", "fuse", "dokan", "mount"]
+categories = ["filesystem"]
+
+[dependencies]
+forensic-vfs = { version = "0.1", path = "../forensic-vfs/crates/core" }
+
+[dev-dependencies]
+ad1-core = { version = "0.1", path = "../ad1-forensic/core", features = ["vfs", "testfix"] }
+tempfile = "3"
+
+# Unify the contract crate across this crate and the `ad1-core` dev-dep (whose
+# `vfs` feature pulls `forensic-vfs` from crates.io) so their `FileSystem` trait
+# impls resolve to the SAME crate and `Ad1Vfs` satisfies `DynFs`.
+[patch.crates-io]
+forensic-vfs = { path = "../forensic-vfs/crates/core" }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+module_name_repetitions = { level = "allow", priority = 1 }
+must_use_candidate = { level = "allow", priority = 1 }
+missing_errors_doc = { level = "allow", priority = 1 }
+missing_panics_doc = { level = "allow", priority = 1 }
