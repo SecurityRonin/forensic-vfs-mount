@@ -11,17 +11,11 @@ keywords = ["forensics", "vfs", "fuse", "dokan", "mount"]
 categories = ["filesystem"]
 
 [dependencies]
-forensic-vfs = { version = "0.1", path = "../forensic-vfs/crates/core" }
+forensic-vfs = "0.7"
 
 [dev-dependencies]
 ad1-core = { version = "0.1", path = "../ad1-forensic/core", features = ["vfs", "testfix"] }
 tempfile = "3"
-
-# Unify the contract crate across this crate and the `ad1-core` dev-dep (whose
-# `vfs` feature pulls `forensic-vfs` from crates.io) so their `FileSystem` trait
-# impls resolve to the SAME crate and `Ad1Vfs` satisfies `DynFs`.
-[patch.crates-io]
-forensic-vfs = { path = "../forensic-vfs/crates/core" }
 
 [lints.rust]
 unsafe_code = "forbid"
