@@ -13,10 +13,6 @@ categories = ["filesystem"]
 [dependencies]
 forensic-vfs = "0.7"
 
-[dev-dependencies]
-ad1-core = { version = "0.1", path = "../ad1-forensic/core", features = ["vfs", "testfix"] }
-tempfile = "3"
-
 [lints.rust]
 unsafe_code = "forbid"
 
