@@ -45,10 +45,15 @@ const CHUNK: usize = 64 * 1024;
 
 struct MockNode {
     kind: NodeKind,
-    /// File bytes; `None` for a directory.
+    /// File bytes; `None` for a directory. For a symlink, the target path bytes.
     data: Option<Vec<u8>>,
     /// `(name, child inode)` pairs; empty for a file.
     children: Vec<(Vec<u8>, u64)>,
+    /// When set, `meta().size` reports this instead of `data.len()`. Models a
+    /// filesystem whose metadata overstates the readable bytes (a sparse or
+    /// concurrently-truncated file), so the whole-file fill loop must terminate
+    /// on the underlying `read_at` returning 0, not spin.
+    size_override: Option<u64>,
 }
 
 /// A tiny read-only tree addressed by [`FileId::Opaque`]:
@@ -75,6 +80,7 @@ impl MockFs {
                 kind: NodeKind::Dir,
                 data: None,
                 children: vec![(b"root".to_vec(), 2)],
+                size_override: None,
             },
         );
         nodes.insert(
@@ -82,7 +88,12 @@ impl MockFs {
             MockNode {
                 kind: NodeKind::Dir,
                 data: None,
-                children: vec![(b"hello.txt".to_vec(), 3), (b"sub".to_vec(), 4)],
+                children: vec![
+                    (b"hello.txt".to_vec(), 3),
+                    (b"sub".to_vec(), 4),
+                    (b"link".to_vec(), 6),
+                ],
+                size_override: None,
             },
         );
         nodes.insert(
@@ -91,6 +102,7 @@ impl MockFs {
                 kind: NodeKind::File,
                 data: Some(HELLO.to_vec()),
                 children: Vec::new(),
+                size_override: None,
             },
         );
         nodes.insert(
@@ -98,7 +110,8 @@ impl MockFs {
             MockNode {
                 kind: NodeKind::Dir,
                 data: None,
-                children: vec![(b"a.bin".to_vec(), 5)],
+                children: vec![(b"a.bin".to_vec(), 5), (b"sparse.bin".to_vec(), 7)],
+                size_override: None,
             },
         );
         nodes.insert(
@@ -107,6 +120,29 @@ impl MockFs {
                 kind: NodeKind::File,
                 data: Some(abin_data()),
                 children: Vec::new(),
+                size_override: None,
+            },
+        );
+        // A symlink whose target is the path bytes stored in `data`.
+        nodes.insert(
+            6,
+            MockNode {
+                kind: NodeKind::Symlink,
+                data: Some(b"/root/hello.txt".to_vec()),
+                children: Vec::new(),
+                size_override: None,
+            },
+        );
+        // A file whose metadata claims 100 bytes but only 10 are readable: the
+        // fill loop must stop when read_at returns 0, not spin to the declared
+        // size.
+        nodes.insert(
+            7,
+            MockNode {
+                kind: NodeKind::File,
+                data: Some(vec![0xABu8; 10]),
+                children: Vec::new(),
+                size_override: Some(100),
             },
         );
         Self { nodes }
@@ -130,7 +166,9 @@ impl MockFs {
 }
 
 fn meta_of(ino: u64, n: &MockNode) -> FsMeta {
-    let size = n.data.as_ref().map_or(0, |d| d.len() as u64);
+    let size = n
+        .size_override
+        .unwrap_or_else(|| n.data.as_ref().map_or(0, |d| d.len() as u64));
     FsMeta {
         ino,
         kind: n.kind,
@@ -235,10 +273,15 @@ impl FileSystem for MockFs {
     }
 
     fn read_link(&self, ino: FileId, _cap: usize) -> VfsResult<Vec<u8>> {
-        let _ = self.node(ino)?;
+        let n = self.node(ino)?;
+        if n.kind == NodeKind::Symlink {
+            if let Some(target) = n.data.as_ref() {
+                return Ok(target.clone());
+            }
+        }
         Err(VfsError::Unsupported {
             layer: "mock",
-            scheme: "no symlinks in the mock tree".to_string(),
+            scheme: "not a symlink".to_string(),
         })
     }
 
@@ -375,4 +418,32 @@ fn read_link_on_non_symlink_errors_cleanly() {
     let m = open_sample();
     let file = resolve(&m, &[b"root", b"hello.txt"]);
     assert!(m.read_link(file).is_err());
+}
+
+#[test]
+fn read_link_on_symlink_returns_target() {
+    let m = open_sample();
+    let link = resolve(&m, &[b"root", b"link"]);
+    let target = m.read_link(link).unwrap();
+    assert_eq!(target, b"/root/hello.txt");
+}
+
+#[test]
+fn lookup_missing_name_returns_none() {
+    let m = open_sample();
+    let root_dir = m.lookup(m.root_ino(), b"root").unwrap().unwrap();
+    // A name that isn't a child resolves to Ok(None) — not an error, not a panic.
+    assert_eq!(m.lookup(root_dir, b"nonexistent").unwrap(), None);
+}
+
+#[test]
+fn read_terminates_when_declared_size_exceeds_readable_bytes() {
+    // `sparse.bin` reports size 100 but only 10 bytes are readable; the fill
+    // loop must stop on the underlying read_at returning 0, yielding exactly
+    // the 10 available bytes rather than spinning or padding.
+    let m = open_sample();
+    let ino = resolve(&m, &[b"root", b"sub", b"sparse.bin"]);
+    assert_eq!(m.meta(ino).unwrap().size, 100);
+    let got = m.read(ino, 0, 100).unwrap();
+    assert_eq!(got, vec![0xABu8; 10]);
 }

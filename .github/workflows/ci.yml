@@ -63,13 +63,8 @@ jobs:
       - run: cargo build --all-features --locked
 
   coverage:
-    name: Coverage (advisory)
+    name: Coverage (100% production lines)
     runs-on: ubuntu-latest
-    # Advisory only for now — reports line coverage, does not gate the build.
-    # TODO: promote to the fleet 100% line-coverage gate (with `// cov:unreachable`
-    # exemptions) once the test suite is filled out; see the coverage job in
-    # prefetch-forensic / amcache-forensic ci.yml for the lcov-walking gate script.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
@@ -79,7 +74,33 @@ jobs:
       - uses: taiki-e/install-action@59012be0884e296ca2da49b530610e72c49039ad # v2.81.6
         with:
           tool: cargo-llvm-cov
-      - run: cargo llvm-cov --all-features --summary-only
+      - name: Fail on any uncovered production line (DA:n,0), honoring cov:unreachable
+        run: |
+          cargo llvm-cov --all-features --lcov --output-path cov.lcov
+          python3 - <<'PY'
+          import sys
+          def marked(path, n):
+              try:
+                  return "cov:unreachable" in open(path).read().splitlines()[n - 1]
+              except Exception:
+                  return False
+          cur, bad = None, []
+          for line in open("cov.lcov").read().splitlines():
+              if line.startswith("SF:"):
+                  cur = line[3:]
+              elif line.startswith("DA:") and cur:
+                  if "/tests/" in cur or "/fuzz/" in cur:
+                      continue
+                  n, hits = line[3:].split(",")
+                  if hits == "0" and not marked(cur, int(n)):
+                      bad.append(f"{cur}:{n}")
+          if bad:
+              print("Uncovered production lines — add a test or // cov:unreachable:")
+              for b in bad:
+                  print("  " + b)
+              sys.exit(1)
+          print("All production lines covered.")
+          PY
 
   deny:
     name: cargo-deny (bans/licenses/sources)
