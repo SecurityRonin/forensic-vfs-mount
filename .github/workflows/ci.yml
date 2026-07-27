@@ -6,7 +6,123 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUSTFLAGS: -Dwarnings
+
 jobs:
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - run: cargo test --all-features
+
+  check-msrv:
+    name: MSRV (1.85)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      # Declared MSRV floor (rust-version = "1.85"); the version input overrides the
+      # rust-toolchain.toml pin (a version ref beats the toml — see fleet CLAUDE.md).
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: "1.85"
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - run: cargo build --all-features --locked
+
+  coverage:
+    name: Coverage (100% production lines)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: taiki-e/install-action@59012be0884e296ca2da49b530610e72c49039ad # v2.81.6
+        with:
+          tool: cargo-llvm-cov
+      - name: Fail on any uncovered production line (DA:n,0), honoring cov:unreachable
+        run: |
+          cargo llvm-cov --all-features --lcov --output-path cov.lcov
+          python3 - <<'PY'
+          import sys
+          def marked(path, n):
+              try:
+                  return "cov:unreachable" in open(path).read().splitlines()[n - 1]
+              except Exception:
+                  return False
+          cur, bad = None, []
+          for line in open("cov.lcov").read().splitlines():
+              if line.startswith("SF:"):
+                  cur = line[3:]
+              elif line.startswith("DA:") and cur:
+                  if "/tests/" in cur or "/fuzz/" in cur:
+                      continue
+                  n, hits = line[3:].split(",")
+                  if hits == "0" and not marked(cur, int(n)):
+                      bad.append(f"{cur}:{n}")
+          if bad:
+              print("Uncovered production lines — add a test or // cov:unreachable:")
+              for b in bad:
+                  print("  " + b)
+              sys.exit(1)
+          print("All production lines covered.")
+          PY
+
+  deny:
+    name: cargo-deny (bans/licenses/sources)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check bans licenses sources
+
+  advisories:
+    name: cargo-deny (advisories)
+    runs-on: ubuntu-latest
+    # Informational: a malformed entry in the upstream RustSec advisory-db breaks
+    # DB *loading* for the whole ecosystem and must not gate our build.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check advisories
+
   vet:
     name: Cargo Vet (supply-chain)
     runs-on: ubuntu-latest
