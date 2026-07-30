@@ -19,6 +19,9 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 [policy.ad1-core]
 audit-as-crates-io = true
 
+[policy.forensic-vfs-mount]
+audit-as-crates-io = false
+
 [[exemptions.ad1-core]]
 version = "0.1.0"
 criteria = "safe-to-run"
