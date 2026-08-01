@@ -1,6 +1,27 @@
 
 # cargo-vet imports lock
 
+[[publisher.forensic-vfs]]
+version = "0.7.0"
+when = "2026-07-20"
+user-id = 347968
+user-login = "h4x0r"
+user-name = "Albert Hui"
+
+[[publisher.forensicnomicon-core]]
+version = "1.4.0"
+when = "2026-07-19"
+user-id = 347968
+user-login = "h4x0r"
+user-name = "Albert Hui"
+
+[[publisher.state-history-forensic]]
+version = "0.1.0"
+when = "2026-06-16"
+user-id = 347968
+user-login = "h4x0r"
+user-name = "Albert Hui"
+
 [[audits.bytecode-alliance.audits.miniz_oxide]]
 who = "Alex Crichton <alex@alexcrichton.com>"
 criteria = "safe-to-deploy"
