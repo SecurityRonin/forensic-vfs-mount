@@ -1,6 +1,6 @@
 [package]
 name = "forensic-vfs-mount"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.85"
 description = "Generic FileSystem -> u64-inode / whole-file mount adapter: wraps any forensic-vfs Arc<dyn FileSystem> in the stable-inode, whole-file read surface a FUSE/Dokan handler wants"
