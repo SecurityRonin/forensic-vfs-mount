@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/SecurityRonin/forensic-vfs-mount/compare/forensic-vfs-mount-v0.1.2...forensic-vfs-mount-v0.1.3) - 2026-08-20
+
+### Fixed
+
+- *(gitignore)* unanchor the target rule so nested cargo projects are ignored
+
 ## [0.1.2](https://github.com/SecurityRonin/forensic-vfs-mount/compare/forensic-vfs-mount-v0.1.1...forensic-vfs-mount-v0.1.2) - 2026-08-09
 
 ### Fixed
